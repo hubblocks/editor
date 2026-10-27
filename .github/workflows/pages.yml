@@ -1,0 +1,53 @@
+name: Build and publish HubBlocks
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          NODE_ENV: production
+          # The site lives at https://USERNAME.github.io/<repository name>/
+          ROOT: /${{ github.event.repository.name }}/
+          STATIC_PATH: /${{ github.event.repository.name }}/static
+      # HubBlocks: εγκαταστάσιμη εφαρμογή, λειτουργία χωρίς internet, αυτόματα blocks του hub
+      - run: node .github/scripts/hubblocks.js
+        env:
+          ROOT: /${{ github.event.repository.name }}/
+          VERSION: ${{ github.sha }}
+      - run: touch build/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
