@@ -29,6 +29,8 @@ const isTrustedExtension = url => (
 
     // For development.
     url.startsWith('http://localhost:8000/') ||
+    // HubBlocks: οι επεκτάσεις που περιέχει η ίδια η εφαρμογή
+    url.startsWith('https://hubblocks.github.io/editor/extensions/') ||
 
     extensionsTrustedByUser.has(url)
 );
