@@ -36,6 +36,8 @@
       bTiltDir: 'κατεύθυνση κλίσης', bTiltCode: 'κωδικός κλίσης (0/3/5/7/9)', bShake: 'όταν κουνηθεί ο αισθητήρας κλίσης',
       bWhenBtn: 'όταν πατηθεί το κουμπί του hub', bBtn: 'κουμπί hub πατημένο;',
       bBattery: 'μπαταρία %', bRename: 'μετονόμασε το hub σε [NAME]',
+      lSprites: 'Sprites του hub', bShows: 'αυτό το sprite δείχνει [PART]', bSim: 'προσομοίωση (χωρίς hub);',
+      pMotorA: 'το μοτέρ Α', pMotorB: 'το μοτέρ Β', pLight: 'το φως', pTilt: 'την κλίση', pDist: 'την απόσταση',
       mAll: 'όλα τα μοτέρ', mA: 'μοτέρ Α', mB: 'μοτέρ Β',
       dThis: 'αυτή τη φορά ↻', dThat: 'την άλλη φορά ↺', dRev: 'αντίστροφη ⇄',
       up: 'πάνω', down: 'κάτω', left: 'αριστερά', right: 'δεξιά', any: 'οπουδήποτε', none: 'καμία',
@@ -66,6 +68,8 @@
       bTiltDir: 'tilt direction', bTiltCode: 'tilt code (0/3/5/7/9)', bShake: 'when tilt sensor is shaken',
       bWhenBtn: 'when hub button pressed', bBtn: 'hub button pressed?',
       bBattery: 'battery %', bRename: 'rename hub to [NAME]',
+      lSprites: 'Hub sprites', bShows: 'this sprite shows [PART]', bSim: 'simulation (no hub)?',
+      pMotorA: 'motor A', pMotorB: 'motor B', pLight: 'the light', pTilt: 'the tilt', pDist: 'the distance',
       mAll: 'all motors', mA: 'motor A', mB: 'motor B',
       dThis: 'this way ↻', dThat: 'that way ↺', dRev: 'reverse ⇄',
       up: 'up', down: 'down', left: 'left', right: 'right', any: 'any', none: 'none',
@@ -143,6 +147,15 @@
       this._onAttachedIO = this._onAttachedIO.bind(this);
       this._onInputValue = this._onInputValue.bind(this);
       this._onButton = this._onButton.bind(this);
+
+      // Sprites του hub και προσομοίωση
+      this.lightIndex = 0;                 // τελευταίο χρώμα του φωτός (0 = σβηστό)
+      this.mirrors = new Map();            // sprites που ορίστηκαν με το block «αυτό το sprite δείχνει…»
+      this.mirrorState = new Map();        // στροφή μοτέρ, πάτημα ποντικιού ανά sprite
+      this.lastDown = false;
+      this.lastTick = 0;
+      this._mirrorLoop = this._mirrorLoop.bind(this);
+      requestAnimationFrame(this._mirrorLoop);
 
       vm.runtime.on('PROJECT_STOP_ALL', () => this.stopAll());
     }
@@ -264,9 +277,22 @@
             opcode: 'renameHub', blockType: Scratch.BlockType.COMMAND,
             text: T.bRename,
             arguments: { NAME: { type: Scratch.ArgumentType.STRING, defaultValue: T.defName } }
-          }
+          },
+          { blockType: Scratch.BlockType.LABEL, text: T.lSprites },
+          {
+            opcode: 'spriteShows', blockType: Scratch.BlockType.COMMAND, text: T.bShows,
+            arguments: { PART: { type: Scratch.ArgumentType.STRING, menu: 'part', defaultValue: 'motorA' } }
+          },
+          { opcode: 'isSimulation', blockType: Scratch.BlockType.BOOLEAN, text: T.bSim }
         ],
         menus: {
+          part: {
+            acceptReporters: false,
+            items: [
+              { text: T.pMotorA, value: 'motorA' }, { text: T.pMotorB, value: 'motorB' },
+              { text: T.pLight, value: 'light' }, { text: T.pTilt, value: 'tilt' }, { text: T.pDist, value: 'distance' }
+            ]
+          },
           motor: {
             acceptReporters: false,
             items: [
@@ -554,6 +580,7 @@
 
     _motorIndexes (id) {
       const list = id === 'A' ? [0] : id === 'B' ? [1] : [0, 1];
+      if (!this.isConnected()) return list; // προσομοίωση: τα sprites δείχνουν τι θα έκανε το μοτέρ
       return list.filter((i) => this.ports[i] === DEV.MOTOR);
     }
 
@@ -639,7 +666,19 @@
 
     // ---------- Φως ----------
 
+    // Το πλησιέστερο από τα 11 χρώματα (για το sprite του φωτός)
+    _nearestColor (r, g, b) {
+      let best = 0;
+      let bestD = Infinity;
+      WEDO_COLORS.forEach((c, i) => {
+        const d = (c[0] - r) ** 2 + (c[1] - g) ** 2 + (c[2] - b) ** 2;
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      return best;
+    }
+
     _setRGB (r, g, b) {
+      this.lightIndex = this._nearestColor(r, g, b);
       return this._send('outputCommand',
         [LED_PORT, 4, 3, clamp(Math.round(r), 0, 255), clamp(Math.round(g), 0, 255), clamp(Math.round(b), 0, 255)],
         'led');
@@ -647,6 +686,7 @@
 
     setLightColor (args) {
       const idx = clamp(Math.round(Scratch.Cast.toNumber(args.COLOR)), 0, 10);
+      this.lightIndex = idx;
       const [r, g, b] = WEDO_COLORS[idx];
       return this._setRGB(r, g, b);
     }
@@ -762,8 +802,101 @@
       return this._enqueue('name', () => this.chars.name.writeValue(data));
     }
 
+    // ---------- Sprites του hub ----------
+
+    isSimulation () { return !this.isConnected(); }
+
+    spriteShows (args, util) {
+      const t = util && util.target;
+      if (t && !t.isStage) this.mirrors.set(t.id, args.PART);
+    }
+
+    // Ποιο μέρος του hub δείχνει ένα sprite: από το block ή από τα ονόματα των στολών (hb:…)
+    _kindOf (t) {
+      if (this.mirrors.has(t.id)) return this.mirrors.get(t.id);
+      const names = t.getCostumes().map((c) => c.name);
+      if (!names.some((n) => n.indexOf('hb:') === 0)) return null;
+      if (names.includes('hb:motor')) return 'motorA';
+      if (names.includes('hb:motor-b')) return 'motorB';
+      if (names.some((n) => n.indexOf('hb:light-') === 0)) return 'light';
+      if (names.some((n) => n.indexOf('hb:tilt-') === 0)) return 'tilt';
+      if (names.includes('hb:distance')) return 'distance';
+      if (names.includes('hb:obstacle')) return 'obstacle';
+      return null;
+    }
+
+    _costume (t, name) {
+      const i = t.getCostumeIndexByName(name);
+      if (i >= 0 && t.currentCostume !== i) t.setCostume(i);
+      return i >= 0;
+    }
+
+    _mirrorLoop (now) {
+      requestAnimationFrame(this._mirrorLoop);
+      const dt = this.lastTick ? Math.min(0.1, (now - this.lastTick) / 1000) : 0;
+      this.lastTick = now;
+      const rt = vm.runtime;
+      const mouse = rt.ioDevices && rt.ioDevices.mouse;
+      const down = mouse ? mouse.getIsDown() : false;
+      let obstacle = null;
+      const shown = [];
+      for (const t of rt.targets) {
+        if (!t.isOriginal || t.isStage) continue;
+        const kind = this._kindOf(t);
+        if (kind === 'obstacle') obstacle = t;
+        else if (kind) shown.push([t, kind]);
+      }
+      for (const [t, kind] of shown) {
+        try {
+          this._mirrorOne(t, kind, dt, down, obstacle);
+        } catch (e) { /* ένα sprite με πρόβλημα δεν σταματά τα υπόλοιπα */ }
+      }
+      for (const id of this.mirrors.keys()) if (!rt.getTargetById(id)) this.mirrors.delete(id);
+      this.lastDown = down;
+    }
+
+    _mirrorOne (t, kind, dt, down, obstacle) {
+      const state = this.mirrorState.get(t.id) || { angle: 0 };
+      this.mirrorState.set(t.id, state);
+      if (kind === 'motorA' || kind === 'motorB') {
+        const m = this.motors[kind === 'motorA' ? 0 : 1];
+        if (m.on && m.level > 0) {
+          state.angle = (state.angle + m.level * 36 * m.dir * dt) % 360; // ισχύς 10 = μία στροφή το δευτερόλεπτο
+          t.setDirection(90 + state.angle);
+        }
+      } else if (kind === 'light') {
+        if (!this._costume(t, 'hb:light-' + this.lightIndex)) t.setEffect('ghost', this.lightIndex === 0 ? 70 : 0);
+      } else if (kind === 'tilt') {
+        // χωρίς hub: κάθε κλικ στο sprite = επόμενη κατεύθυνση
+        if (!this.isConnected() && down && !this.lastDown && t.isTouchingObject('_mouse_')) {
+          const order = [0, 9, 3, 7, 5];
+          const next = order[(order.indexOf(this.sensors.tiltCode || 0) + 1) % order.length];
+          this.sensors.tiltCode = next;
+          state.pressHome = { x: t.x, y: t.y };
+        }
+        if (state.pressHome && !down) {
+          t.setXY(state.pressHome.x, state.pressHome.y); // στον editor το κλικ μπορεί να μετακίνησε το sprite
+          state.pressHome = null;
+        }
+        const name = { 9: 'up', 3: 'down', 7: 'left', 5: 'right' }[this.sensors.tiltCode] || 'none';
+        if (!this._costume(t, 'hb:tilt-' + name)) {
+          t.setDirection({ up: 0, down: 180, left: -90, right: 90, none: 90 }[name]);
+        }
+      } else if (kind === 'distance' && obstacle) {
+        const start = t.x + 70;
+        if (this.isConnected()) {
+          obstacle.setXY(start + this.sensors.distance * 2.5, t.y); // με hub: το εμπόδιο δείχνει την πραγματική απόσταση
+        } else {
+          this.sensors.distance = clamp(Math.round((obstacle.x - start) / 2.5), 0, 100); // χωρίς hub: η απόσταση ακολουθεί το εμπόδιο
+        }
+      }
+    }
+
     stopAll () {
-      if (!this.isConnected()) return;
+      if (!this.isConnected()) {
+        this.motors.forEach((m) => { this._clearTimer(m); m.on = false; });
+        return;
+      }
       [0, 1].forEach((i) => {
         if (this.ports[i] === DEV.MOTOR) this._motorStop(i);
       });
