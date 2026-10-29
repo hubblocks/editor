@@ -32,7 +32,7 @@ import FramerateChanger from '../../containers/tw-framerate-changer.jsx';
 import ChangeUsername from '../../containers/tw-change-username.jsx';
 import CloudVariablesToggler from '../../containers/tw-cloud-toggler.jsx';
 import TWSaveStatus from './tw-save-status.jsx';
-import TWNews from './tw-news.jsx';
+import hubblocksLogo from './hubblocks-logo.svg';
 
 import {openTipsLibrary, openSettingsModal, openRestorePointModal} from '../../reducers/modals';
 import {setPlayer} from '../../reducers/mode';
@@ -106,7 +106,6 @@ import sharedMessages from '../../lib/shared-messages';
 
 import SeeInsideButton from './tw-see-inside.jsx';
 import {notScratchDesktop} from '../../lib/isScratchDesktop.js';
-import {APP_NAME} from '../../lib/brand.js';
 
 const ariaMessages = defineMessages({
     tutorials: {
@@ -492,6 +491,15 @@ class MenuBar extends React.Component {
             >
                 <div className={styles.mainMenu}>
                     <div className={styles.fileGroup}>
+                        {/* HubBlocks: λογότυπο */}
+                        <div className={classNames(styles.menuBarItem)}>
+                            <img
+                                alt="HubBlocks"
+                                draggable={false}
+                                src={hubblocksLogo}
+                                style={{height: '30px', width: '30px', borderRadius: '7px', display: 'block'}}
+                            />
+                        </div>
                         {this.props.errors.length > 0 && <div>
                             <MenuLabel
                                 open={this.props.errorsMenuOpen}
@@ -516,14 +524,14 @@ class MenuBar extends React.Component {
                                     place={this.props.isRtl ? 'left' : 'right'}
                                 >
                                     <MenuSection>
-                                        <MenuItemLink href="https://scratch.mit.edu/users/GarboMuffin/#comments">
+                                        <MenuItemLink href="https://github.com/hubblocks/editor/issues">
                                             <FormattedMessage
                                                 defaultMessage="Some scripts encountered errors."
                                                 description="Link in error menu"
                                                 id="tw.menuBar.reportError1"
                                             />
                                         </MenuItemLink>
-                                        <MenuItemLink href="https://scratch.mit.edu/users/GarboMuffin/#comments">
+                                        <MenuItemLink href="https://github.com/hubblocks/editor/issues">
                                             <FormattedMessage
                                                 defaultMessage="This is a bug. Please report it."
                                                 description="Link in error menu"
@@ -1011,30 +1019,27 @@ class MenuBar extends React.Component {
                             />
                         ) : []))}
                     </div>
-                    {/* tw: add a feedback button */}
+                    {/* HubBlocks: κουμπί βοήθειας προς τον ιστότοπο */}
                     <div className={styles.menuBarItem}>
                         <a
                             className={styles.feedbackLink}
-                            href="https://scratch.mit.edu/users/GarboMuffin/#comments"
+                            href="https://hubblocks.github.io/#faq"
                             rel="noopener noreferrer"
                             target="_blank"
                         >
-                            {/* todo: icon */}
                             <Button className={styles.feedbackButton}>
-                                <FormattedMessage
-                                    defaultMessage="{APP_NAME} Feedback"
-                                    description="Button to give feedback in the menu bar"
-                                    id="tw.feedbackButton"
-                                    values={{
-                                        APP_NAME
-                                    }}
-                                />
+                                {String(this.props.intl.locale).startsWith('el') ? 'Βοήθεια' : 'Help'}
                             </Button>
                         </a>
                     </div>
                 </div>
 
                 <div className={styles.accountInfoGroup}>
+                    {/* HubBlocks: κατάσταση σύνδεσης του hub (τη συμπληρώνει η κατηγορία Hub) */}
+                    <div
+                        className={styles.menuBarItem}
+                        id="hubblocks-status"
+                    />
                     <TWSaveStatus
                         showSaveFilePicker={this.props.showSaveFilePicker}
                     />
@@ -1047,7 +1052,6 @@ class MenuBar extends React.Component {
         return (
             <React.Fragment>
                 {menuBar}
-                <TWNews />
             </React.Fragment>
         );
     }

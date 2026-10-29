@@ -37,6 +37,7 @@
       bWhenBtn: 'όταν πατηθεί το κουμπί του hub', bBtn: 'κουμπί hub πατημένο;',
       bBattery: 'μπαταρία %', bRename: 'μετονόμασε το hub σε [NAME]',
       lSprites: 'Sprites του hub', bShows: 'αυτό το sprite δείχνει [PART]', bSim: 'προσομοίωση (χωρίς hub);',
+      badgeOff: 'Σύνδεση hub', badgeOn: 'Hub', badgeTip: 'Πάτησε για σύνδεση με το hub',
       pMotorA: 'το μοτέρ Α', pMotorB: 'το μοτέρ Β', pLight: 'το φως', pTilt: 'την κλίση', pDist: 'την απόσταση',
       mAll: 'όλα τα μοτέρ', mA: 'μοτέρ Α', mB: 'μοτέρ Β',
       dThis: 'αυτή τη φορά ↻', dThat: 'την άλλη φορά ↺', dRev: 'αντίστροφη ⇄',
@@ -69,6 +70,7 @@
       bWhenBtn: 'when hub button pressed', bBtn: 'hub button pressed?',
       bBattery: 'battery %', bRename: 'rename hub to [NAME]',
       lSprites: 'Hub sprites', bShows: 'this sprite shows [PART]', bSim: 'simulation (no hub)?',
+      badgeOff: 'Connect hub', badgeOn: 'Hub', badgeTip: 'Click to connect to the hub',
       pMotorA: 'motor A', pMotorB: 'motor B', pLight: 'the light', pTilt: 'the tilt', pDist: 'the distance',
       mAll: 'all motors', mA: 'motor A', mB: 'motor B',
       dThis: 'this way ↻', dThat: 'that way ↺', dRev: 'reverse ⇄',
@@ -853,6 +855,44 @@
       }
       for (const id of this.mirrors.keys()) if (!rt.getTargetById(id)) this.mirrors.delete(id);
       this.lastDown = down;
+      if (now - (this.badgeTime || 0) > 400) {
+        this.badgeTime = now;
+        this._updateBadge();
+      }
+    }
+
+    // Ένδειξη στη γραμμή μενού: κατάσταση σύνδεσης και μπαταρία· με κλικ γίνεται σύνδεση
+    _updateBadge () {
+      if (typeof document === 'undefined') return;
+      const host = document.getElementById('hubblocks-status');
+      if (!host) return;
+      if (!this.badge || !host.contains(this.badge)) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.cssText = 'font: inherit; font-weight: 700; font-size: 0.8rem; color: #FFFFFF; cursor: pointer; ' +
+          'background: rgba(255, 255, 255, 0.18); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px; ' +
+          'padding: 4px 12px; white-space: nowrap; line-height: 1.4;';
+        b.addEventListener('click', () => {
+          if (!this.isConnected()) this.connect();
+        });
+        host.appendChild(b);
+        this.badge = b;
+      }
+      let text;
+      if (this.isConnected()) {
+        const bat = this.sensors.battery;
+        text = '🟢 ' + T.badgeOn + (bat !== '' && bat !== undefined ? ' · 🔋 ' + bat + '%' : '');
+        this.badge.title = this.status;
+        this.badge.style.cursor = 'default';
+      } else if (/…$/.test(this.status)) {
+        text = '🟡 ' + this.status;
+        this.badge.title = this.status;
+      } else {
+        text = '⚪ ' + T.badgeOff;
+        this.badge.title = T.badgeTip;
+        this.badge.style.cursor = 'pointer';
+      }
+      if (this.badge.textContent !== text) this.badge.textContent = text;
     }
 
     _mirrorOne (t, kind, dt, down, obstacle) {

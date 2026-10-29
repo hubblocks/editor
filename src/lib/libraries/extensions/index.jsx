@@ -55,7 +55,8 @@ import returnIcon from './custom/return.svg';
 import galleryIcon from './gallery/gallery.svg';
 import {APP_NAME} from '../../brand';
 
-export default [
+// HubBlocks: η λίστα όλων, πριν από το φιλτράρισμα στο τέλος
+const allExtensions = [
     {
         name: (
             <FormattedMessage
@@ -428,6 +429,12 @@ export default [
         // Not marked as incompatible with Scratch so that clicking on it doesn't show a prompt
     }
 ];
+
+// HubBlocks: κρύβονται οι επεκτάσεις του Scratch για υλικό που χρειάζονται Scratch Link
+// (το hub συνδέεται με την κατηγορία «Hub» της εφαρμογής, απευθείας με Bluetooth)
+const HUBBLOCKS_HIDDEN = ['microbit', 'ev3', 'boost', 'wedo2', 'gdxfor'];
+export default allExtensions.filter(ext => !HUBBLOCKS_HIDDEN.includes(ext.extensionId));
+
 
 export const galleryLoading = {
     name: (
