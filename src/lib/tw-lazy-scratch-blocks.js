@@ -16,6 +16,8 @@ const load = () => {
     return import(/* webpackChunkName: "sb" */ 'scratch-blocks')
         .then(m => {
             _ScratchBlocks = m.default;
+            // HubBlocks: wider block palette to fit the larger blocks (Scratch: 250)
+            _ScratchBlocks.VerticalFlyout.prototype.DEFAULT_WIDTH = 320;
             return _ScratchBlocks;
         });
 };
