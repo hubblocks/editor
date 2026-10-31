@@ -93,9 +93,7 @@ import dropdownCaret from './dropdown-caret.svg';
 import aboutIcon from './icon--about.svg';
 import fileIcon from './icon--file.svg';
 import editIcon from './icon--edit.svg';
-import addonsIcon from './addons.svg';
 import errorIcon from './tw-error.svg';
-import advancedIcon from './tw-advanced.svg';
 
 import ninetiesLogo from './nineties_logo.svg';
 import catLogo from './cat_logo.svg';
@@ -556,6 +554,16 @@ class MenuBar extends React.Component {
                             canChangeLanguage={this.props.canChangeLanguage}
                             canChangeTheme={this.props.canChangeTheme}
                             isRtl={this.props.isRtl}
+                            // eslint-disable-next-line react/jsx-no-bind
+                            onClickAddons={this.props.onClickAddonSettings && (() => {
+                                this.props.onRequestCloseSettings();
+                                this.props.onClickAddonSettings();
+                            })}
+                            // eslint-disable-next-line react/jsx-no-bind
+                            onClickAdvanced={this.props.onClickSettingsModal && (() => {
+                                this.props.onRequestCloseSettings();
+                                this.props.onClickSettingsModal();
+                            })}
                             onClickDesktopSettings={
                                 this.props.onClickDesktopSettings &&
                                 this.handleClickDesktopSettings
@@ -893,46 +901,25 @@ class MenuBar extends React.Component {
                             </MenuLabel>
                         )}
 
-                        {this.props.onClickAddonSettings && (
-                            <div
-                                className={classNames(styles.menuBarItem, styles.hoverable)}
-                                onClick={this.props.onClickAddonSettings}
+                        {/* HubBlocks: Addons and Advanced live in the Settings menu; this is the activities link */}
+                        <div className={styles.menuBarItem}>
+                            <a
+                                href="https://hubblocks.github.io/activities/"
+                                rel="noopener noreferrer"
+                                target="_blank"
+                                style={{
+                                    background: '#84C13E',
+                                    color: '#FFFFFF',
+                                    fontWeight: 'bold',
+                                    padding: '0.35rem 0.8rem',
+                                    borderRadius: '0.35rem',
+                                    textDecoration: 'none',
+                                    whiteSpace: 'nowrap'
+                                }}
                             >
-                                <img
-                                    src={addonsIcon}
-                                    draggable={false}
-                                    width={20}
-                                    height={20}
-                                />
-                                <span className={styles.collapsibleLabel}>
-                                    <FormattedMessage
-                                        defaultMessage="Addons"
-                                        description="Button to open addon settings"
-                                        id="tw.menuBar.addons"
-                                    />
-                                </span>
-                            </div>
-                        )}
-                        {this.props.onClickSettingsModal && (
-                            <div
-                                className={classNames(styles.menuBarItem, styles.hoverable)}
-                                onClick={this.props.onClickSettingsModal}
-                            >
-                                <img
-                                    src={advancedIcon}
-                                    draggable={false}
-                                    width={20}
-                                    height={20}
-                                />
-                                <span className={styles.collapsibleLabel}>
-                                    <FormattedMessage
-                                        defaultMessage="Advanced"
-                                        description="Button to open advanced settings menu"
-                                        id="tw.menuBar.advanced"
-                                    />
-                                </span>
-                            </div>
-                        )}
+                                {String(this.props.intl.locale).startsWith('el') ? 'Δραστηριότητες' : 'Sample Activities'}
+                            </a>
+                        </div>
                     </div>
 
                     <Divider className={styles.divider} />
