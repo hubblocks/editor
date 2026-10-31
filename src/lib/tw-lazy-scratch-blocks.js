@@ -18,6 +18,7 @@ const load = () => {
             _ScratchBlocks = m.default;
             // HubBlocks: wider block palette to fit the larger blocks (Scratch: 250)
             _ScratchBlocks.VerticalFlyout.prototype.DEFAULT_WIDTH = 320;
+            _ScratchBlocks.Toolbox.prototype.width = 320 + 60;
             return _ScratchBlocks;
         });
 };
