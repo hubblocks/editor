@@ -72,6 +72,8 @@
       bBattery: 'battery %', bRename: 'rename hub to [NAME]',
       lSprites: 'Hub sprites', bShows: 'this sprite shows [PART]', bSim: 'simulation (no hub)?',
       badgeOff: 'Connect hub', badgeOn: 'Hub', badgeTip: 'Click to connect to the hub',
+      bSetHub: 'this sprite controls hub [HUB]', maxHubs: 'Up to 3 hubs can be connected at the same time.',
+      already: 'This hub is already connected.', addTip: 'Connect another hub',
       pMotorA: 'motor A', pMotorB: 'motor B', pLight: 'the light', pTilt: 'the tilt', pDist: 'the distance',
       mAll: 'motor', mA: 'motor A', mB: 'motor B',
       dThis: '↻ this way', dThat: '↺ that way', dRev: '⇄ reverse',
@@ -130,7 +132,9 @@
   const bytesOf = (dv) => new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
 
   class WeDo2GR {
-    constructor () {
+    constructor (index = 0, opts = {}) {
+      this.index = index;          // 0, 1, 2 = hub 1, 2, 3
+      this.peers = [this];         // all hub connections (set by the manager)
       this.device = null;
       this.server = null;
       this.chars = {};
@@ -157,10 +161,11 @@
       this.mirrorState = new Map();        // στροφή μοτέρ, πάτημα ποντικιού ανά sprite
       this.lastDown = false;
       this.lastTick = 0;
-      this._mirrorLoop = this._mirrorLoop.bind(this);
-      requestAnimationFrame(this._mirrorLoop);
-
-      vm.runtime.on('PROJECT_STOP_ALL', () => this.stopAll());
+      if (!opts.hubOnly) {
+        this._mirrorLoop = this._mirrorLoop.bind(this);
+        requestAnimationFrame(this._mirrorLoop);
+        vm.runtime.on('PROJECT_STOP_ALL', () => this.stopAll());
+      }
     }
 
     getInfo () {
@@ -357,6 +362,11 @@
           filters: [{ services: [DEVICE_SERVICE] }],
           optionalServices: [IO_SERVICE, 'battery_service']
         });
+        if (this.peers.some((h) => h !== this && h.device && h.device.id === device.id && h.isConnected())) {
+          this.status = this.isConnected() ? this.status : T.stDisconnected;
+          alert(T.already);
+          return;
+        }
         if (this.device && this.device !== device) this.disconnect();
         this.device = device;
         this.userDisconnect = false;
@@ -379,6 +389,7 @@
     }
 
     async _setup () {
+      this.lastSent = {};   // new connection: the hub remembers nothing, so send everything again
       this.status = T.stConnecting;
       this.server = await this.device.gatt.connect();
       const dev = await this.server.getPrimaryService(DEVICE_SERVICE);
@@ -413,7 +424,7 @@
 
       // Λειτουργία RGB για το φως και μπλε χρώμα, όπως το Scratch
       this._send('inputCommand', [1, 2, LED_PORT, DEV.LED, 1, 0, 0, 0, 0, 0, 0]);
-      this._setRGB(0, 0, 255);
+      this._setRGB(...WEDO_COLORS[[3, 6, 8][this.index] || 3]);   // hub 1 blue, hub 2 green, hub 3 orange
 
       // Ανάγνωση μπαταρίας κάθε 5" (κρατάει και τη σύνδεση ζωντανή)
       clearInterval(this.keepAlive);
@@ -486,6 +497,17 @@
 
     _send (charKey, bytes, key) {
       if (!this.isConnected()) return Promise.resolve();
+      // Skip a command identical to the last one sent to the same output, unless it is
+      // older than 1 s (a safety refresh). Forever loops would otherwise flood Bluetooth.
+      if (key) {
+        const sig = charKey + ':' + bytes.join(',');
+        const now = Date.now();
+        this.lastSent = this.lastSent || {};
+        const prev = this.lastSent[key];
+        const pending = this.queue.some((q) => q.key === key);
+        if (!pending && prev && prev.sig === sig && now - prev.t < 1000) return Promise.resolve();
+        this.lastSent[key] = { sig, t: now };
+      }
       const data = new Uint8Array(bytes);
       return this._enqueue(key, async () => {
         const ch = this.chars[charKey];
@@ -945,5 +967,154 @@
     }
   }
 
-  Scratch.extensions.register(new WeDo2GR());
+  // ---------- Several hubs: each sprite controls one hub (default: hub 1) ----------
+  const HUB_DOTS = ['🔵', '🟢', '🟠'];
+  const P = WeDo2GR.prototype;
+  class HubManager {
+    constructor () {
+      this.hubs = [0, 1, 2].map((i) => new WeDo2GR(i, { hubOnly: true }));
+      this.hubs.forEach((h) => { h.peers = this.hubs; });
+      this.spriteHub = new WeakMap();      // sprite (shared by its clones) → hub index
+      this.mirrors = new Map();
+      this.mirrorState = new Map();
+      this.lastDown = false;
+      this.lastTick = 0;
+      this._mirrorLoop = P._mirrorLoop.bind(this);
+      requestAnimationFrame(this._mirrorLoop);
+      vm.runtime.on('PROJECT_STOP_ALL', () => this.stopAll());
+      // every block runs on the hub of the sprite that runs it
+      for (const b of this.hubs[0].getInfo().blocks) {
+        if (b && b.opcode && !(b.opcode in this)) {
+          this[b.opcode] = (args, util) => this._hub(util)[b.opcode](args, util);
+        }
+      }
+    }
+
+    // The sprite's hub is kept in a sprite variable called "hub" (1–3): it is saved with the
+    // project, visible in the Variables category, and copied to clones.
+    _hubVar (target) {
+      if (!target || typeof target.lookupVariableByNameAndType !== 'function') return null;
+      return target.lookupVariableByNameAndType('hub', '', true);
+    }
+    _index (target) {
+      const v = this._hubVar(target);
+      if (v) {
+        const n = Math.round(Scratch.Cast.toNumber(v.value));
+        if (n >= 1 && n <= 3) return n - 1;
+      }
+      const key = target && (target.sprite || target);
+      return key && this.spriteHub.has(key) ? this.spriteHub.get(key) : 0;
+    }
+    _hub (util) { return this.hubs[this._index(util && util.target)]; }
+
+    getInfo () {
+      const info = this.hubs[0].getInfo();
+      const at = info.blocks.findIndex((b) => b && b.opcode === 'isConnectedBlock');
+      info.blocks.splice(at + 1, 0, {
+        opcode: 'setHub', blockType: Scratch.BlockType.COMMAND, text: T.bSetHub,
+        arguments: { HUB: { type: Scratch.ArgumentType.STRING, menu: 'hubNum', defaultValue: '1' } }
+      });
+      info.menus.hubNum = { acceptReporters: true, items: ['1', '2', '3'] };
+      return info;
+    }
+
+    setHub (args, util) {
+      const t = util && util.target;
+      if (!t || t.isStage) return;
+      const n = Math.min(3, Math.max(1, Math.round(Scratch.Cast.toNumber(args.HUB)) || 1));
+      this.spriteHub.set(t.sprite || t, n - 1);
+      if (typeof t.lookupVariableByNameAndType === 'function') {
+        let v = this._hubVar(t);
+        if (!v && typeof t.createVariable === 'function') {
+          const id = 'hubblocks-hub-' + t.id;
+          t.createVariable(id, 'hub', '');
+          v = t.variables && t.variables[id];
+          if (vm.runtime.requestToolboxExtensionsUpdate) vm.runtime.requestToolboxExtensionsUpdate();
+        }
+        if (v) v.value = n;
+      }
+    }
+
+    connect () {
+      const busy = (h) => h.isConnected() || /…$/.test(h.status);
+      const free = this.hubs.find((h) => !busy(h));
+      if (!free) { alert(T.maxHubs); return; }
+      return free.connect();
+    }
+
+    disconnect () { this.hubs.forEach((h) => h.disconnect()); }
+
+    stopAll () { this.hubs.forEach((h) => h.stopAll()); }
+
+    spriteShows (args, util) { return P.spriteShows.call(this, args, util); }
+    _kindOf (t) { return P._kindOf.call(this, t); }
+    _costume (t, name) { return P._costume.call(this, t, name); }
+
+    // the simulation sprites show the hub of the sprite itself
+    _mirrorOne (t, kind, dt, down, obstacle) {
+      const ctx = Object.create(this.hubs[this._index(t)]);
+      ctx.mirrorState = this.mirrorState;
+      ctx.lastDown = this.lastDown;
+      return P._mirrorOne.call(ctx, t, kind, dt, down, obstacle);
+    }
+
+    // menu bar: one entry per hub (dot = its light colour), plus ＋ for another hub
+    _updateBadge () {
+      if (typeof document === 'undefined') return;
+      const host = document.getElementById('hubblocks-status');
+      if (!host) return;
+      const pill = 'font: inherit; font-weight: 700; font-size: 0.8rem; color: #FFFFFF; ' +
+        'background: rgba(255, 255, 255, 0.18); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px; ' +
+        'padding: 4px 12px; white-space: nowrap; line-height: 1.4;';
+      if (!this.badge || !host.contains(this.badge)) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.cssText = pill;
+        b.addEventListener('click', () => { if (!this.hubs.some((h) => h.isConnected())) this.connect(); });
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.textContent = '＋';
+        add.title = T.addTip;
+        add.style.cssText = pill + ' margin-left: 6px; cursor: pointer; padding: 4px 10px;';
+        add.addEventListener('click', () => this.connect());
+        host.appendChild(b);
+        host.appendChild(add);
+        this.badge = b;
+        this.addBtn = add;
+      }
+      const parts = [];
+      let anyOn = false;
+      this.hubs.forEach((h, i) => {
+        const name = T.badgeOn + ' ' + (i + 1);
+        if (h.isConnected()) {
+          anyOn = true;
+          const bat = h.sensors.battery;
+          parts.push(HUB_DOTS[i] + ' ' + name + (bat !== '' && bat !== undefined ? ' · 🔋 ' + bat + '%' : ''));
+        } else if (/…$/.test(h.status)) {
+          parts.push('🟡 ' + name + ' …');
+        } else if (h.status === T.stLost) {
+          parts.push('🔴 ' + name);
+        }
+      });
+      let text;
+      if (!parts.length) {
+        text = '⚪ ' + T.badgeOff;
+        this.badge.title = T.badgeTip;
+        this.badge.style.cursor = 'pointer';
+      } else {
+        text = parts.join('   ');
+        this.badge.title = this.hubs.map((h, i) => (i + 1) + ': ' + h.status).join('\n');
+        this.badge.style.cursor = anyOn ? 'default' : 'pointer';
+      }
+      if (this.badge.textContent !== text) this.badge.textContent = text;
+      const showAdd = anyOn && this.hubs.some((h) => !h.isConnected() && !/…$/.test(h.status));
+      this.addBtn.style.display = showAdd ? '' : 'none';
+    }
+  }
+
+  // If the Hub category is already loaded (e.g. a project loaded the other language's file
+  // a moment earlier), step aside instead of registering it twice.
+  const em = Scratch.vm && Scratch.vm.extensionManager;
+  if (em && typeof em.isExtensionLoaded === 'function' && em.isExtensionLoaded('wedo2gr')) return;
+  Scratch.extensions.register(new HubManager());
 })(Scratch);
