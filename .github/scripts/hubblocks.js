@@ -60,9 +60,10 @@ const autoload = `
   } catch (e) {}
   if (!lang) lang = (navigator.language || '').toLowerCase();
   lang = lang.indexOf('el') === 0 ? 'el' : 'en';
-  var ext = new URL('extensions/hub-' + lang + '.js', location.href).href;
-  var others = p.getAll('extension').filter(function (u) { return !/\\/extensions\\/hub-(el|en)\\.js$/.test(u); });
-  var want = others.concat([ext]);
+  // HubBlocks' own block categories, always loaded in the editor's language
+  var mine = ['hub', 'measure'].map(function (n) { return new URL('extensions/' + n + '-' + lang + '.js', location.href).href; });
+  var others = p.getAll('extension').filter(function (u) { return !/\\/extensions\\/(hub|measure)-(el|en)\\.js$/.test(u); });
+  var want = others.concat(mine);
   var have = p.getAll('extension');
   if (p.has('lang') || want.join('|') !== have.join('|')) {
     p.delete('lang');
