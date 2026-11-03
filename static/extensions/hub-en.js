@@ -280,7 +280,8 @@
           '---',
           { opcode: 'whenButton', blockType: Scratch.BlockType.HAT, text: T.bWhenBtn },
           { opcode: 'buttonPressed', blockType: Scratch.BlockType.BOOLEAN, text: T.bBtn },
-          { opcode: 'getBattery', blockType: Scratch.BlockType.REPORTER, text: T.bBattery },
+          // hidden: the menu-bar indicator shows the battery; kept so older projects still work
+          { opcode: 'getBattery', blockType: Scratch.BlockType.REPORTER, text: T.bBattery, hideFromPalette: true },
           {
             opcode: 'renameHub', blockType: Scratch.BlockType.COMMAND,
             text: T.bRename,
