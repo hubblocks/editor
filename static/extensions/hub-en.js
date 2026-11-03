@@ -1117,5 +1117,7 @@
   // a moment earlier), step aside instead of registering it twice.
   const em = Scratch.vm && Scratch.vm.extensionManager;
   if (em && typeof em.isExtensionLoaded === 'function' && em.isExtensionLoaded('wedo2gr')) return;
-  Scratch.extensions.register(new HubManager());
+  const manager = new HubManager();
+  globalThis.hubblocksHub = manager;   // lets other HubBlocks categories (e.g. Measure) read the hubs
+  Scratch.extensions.register(manager);
 })(Scratch);
